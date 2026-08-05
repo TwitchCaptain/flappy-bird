@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flappy Bird — High Quality Edition</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game" width="420" height="640"></canvas>
+  <div id="hud">
+    <div class="score-box"><span class="label">SCORE</span><span id="score">0</span></div>
+    <div class="score-box"><span class="label">BEST</span><span id="best">0</span></div>
+  </div>
+  <div id="overlay">
+    <div id="title-card">
+      <h1>Flappy Bird</h1>
+      <p id="subtitle">Tap, click, or press Space to fly</p>
+      <button id="start-btn">▶ Play</button>
+    </div>
+  </div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
