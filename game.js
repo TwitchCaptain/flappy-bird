@@ -33,12 +33,35 @@
   const BIRD_X    = 110;
   const GROUND_Y  = H - 84;
   const BIRD_R    = 15;
+  const SKY_EVERY  = 5;   // background palette shifts every N pipes scored
+  const PIPE_EVERY = 9;   // pipe palette shifts every N pipes spawned
+
+  // Sky gradients cycle with score
+  const SKY_THEMES = [
+    { top: "#4ec0f4", mid: "#8fd8f8", bot: "#c9ecff", sun: "#fff3b0", glow: "#ffe680" },
+    { top: "#6b8cff", mid: "#9eb6ff", bot: "#d6e0ff", sun: "#ffe0a0", glow: "#ffc878" },
+    { top: "#c06cf0", mid: "#d9a0f8", bot: "#f0d8ff", sun: "#ffe9a8", glow: "#ffd070" },
+    { top: "#ff7b54", mid: "#ffb088", bot: "#ffe0cc", sun: "#fff4c2", glow: "#ffe080" },
+    { top: "#2ec4b6", mid: "#7ee0d6", bot: "#c8f5f0", sun: "#fff1b8", glow: "#ffe070" },
+    { top: "#1d3557", mid: "#457b9d", bot: "#a8dadc", sun: "#f1faee", glow: "#e9c46a" },
+  ];
+
+  // Pipe body/rim gradients cycle with spawn count
+  const PIPE_THEMES = [
+    { a: "#5da63a", b: "#8ed060", c: "#6dbf3f", d: "#4c8f2c", rim: "#3f7d22" },
+    { a: "#2a7fc9", b: "#6eb6f0", c: "#3d9ae0", d: "#1f5f9a", rim: "#184c7a" },
+    { a: "#c45c26", b: "#f0a060", c: "#e07830", d: "#a84818", rim: "#8a3a12" },
+    { a: "#8b3db8", b: "#c98aef", c: "#a855d4", d: "#6b2a8f", rim: "#542070" },
+    { a: "#c9a227", b: "#f0d060", c: "#e0bc30", d: "#9a7a18", rim: "#7a6012" },
+    { a: "#c2305a", b: "#f07898", c: "#e04870", d: "#9a2045", rim: "#7a1836" },
+  ];
 
   // ---------- State ----------
   const MODE = { READY: "ready", PLAYING: "playing", OVER: "over" };
   let mode = MODE.READY;
   let bird = { y: H / 2, vel: 0, rot: 0 };
   let pipes = [];
+  let pipesSpawned = 0;
   let score = 0;
   let frame = 0;
   let shake = 0;
@@ -114,11 +137,22 @@
     ctx.restore();
   }
 
+  // ---------- Themes ----------
+  function skyTheme() {
+    return SKY_THEMES[Math.floor(score / SKY_EVERY) % SKY_THEMES.length];
+  }
+
+  function pipeThemeForIndex(spawnIndex) {
+    return PIPE_THEMES[Math.floor(spawnIndex / PIPE_EVERY) % PIPE_THEMES.length];
+  }
+
   // ---------- Pipes ----------
   function spawnPipe() {
     const minTop = 70, maxTop = GROUND_Y - PIPE_GAP - 70;
     const top = rand(minTop, maxTop);
-    pipes.push({ x: W + 10, top, scored: false });
+    const theme = pipeThemeForIndex(pipesSpawned);
+    pipesSpawned++;
+    pipes.push({ x: W + 10, top, scored: false, theme });
   }
 
   // ---------- Bird ----------
@@ -135,6 +169,7 @@
     bird.vel = 0;
     bird.rot = 0;
     pipes = [];
+    pipesSpawned = 0;
     score = 0;
     scoreEl.textContent = 0;
     overlay.classList.add("hidden");
@@ -208,21 +243,22 @@
 
   // ---------- Draw ----------
   function drawSky() {
+    const sky = skyTheme();
     const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-    g.addColorStop(0, "#4ec0f4");
-    g.addColorStop(0.7, "#8fd8f8");
-    g.addColorStop(1, "#c9ecff");
+    g.addColorStop(0, sky.top);
+    g.addColorStop(0.7, sky.mid);
+    g.addColorStop(1, sky.bot);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, GROUND_Y);
     // sun
     ctx.save();
     ctx.globalAlpha = 0.9;
-    ctx.fillStyle = "#fff3b0";
+    ctx.fillStyle = sky.sun;
     ctx.beginPath();
     ctx.arc(345, 78, 34, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 0.35;
-    ctx.fillStyle = "#ffe680";
+    ctx.fillStyle = sky.glow;
     ctx.beginPath();
     ctx.arc(345, 78, 50, 0, Math.PI * 2);
     ctx.fill();
@@ -234,12 +270,13 @@
       // top pipe (flipped)
       const topH = p.top;
       const bottomY = p.top + PIPE_GAP;
-      drawPipe(p.x, 0, topH, true);
-      drawPipe(p.x, bottomY, GROUND_Y - bottomY, false);
+      drawPipe(p.x, 0, topH, true, p.theme);
+      drawPipe(p.x, bottomY, GROUND_Y - bottomY, false, p.theme);
     }
   }
 
-  function drawPipe(x, y, h, flipped) {
+  function drawPipe(x, y, h, flipped, theme) {
+    const t = theme || PIPE_THEMES[0];
     ctx.save();
     if (flipped) {
       ctx.translate(x + PIPE_W / 2, y + h);
@@ -248,10 +285,10 @@
       ctx.translate(x + PIPE_W / 2, y);
     }
     const grad = ctx.createLinearGradient(-PIPE_W / 2, 0, PIPE_W / 2, 0);
-    grad.addColorStop(0, "#5da63a");
-    grad.addColorStop(0.25, "#8ed060");
-    grad.addColorStop(0.55, "#6dbf3f");
-    grad.addColorStop(1, "#4c8f2c");
+    grad.addColorStop(0, t.a);
+    grad.addColorStop(0.25, t.b);
+    grad.addColorStop(0.55, t.c);
+    grad.addColorStop(1, t.d);
     ctx.fillStyle = grad;
     ctx.fillRect(-PIPE_W / 2, 0, PIPE_W, h);
     // edge highlight
@@ -262,10 +299,10 @@
     // rim
     const rimH = 26;
     const rimGrad = ctx.createLinearGradient(-PIPE_W / 2, 0, PIPE_W / 2, 0);
-    rimGrad.addColorStop(0, "#4c8f2c");
-    rimGrad.addColorStop(0.25, "#8ed060");
-    rimGrad.addColorStop(0.55, "#6dbf3f");
-    rimGrad.addColorStop(1, "#3f7d22");
+    rimGrad.addColorStop(0, t.d);
+    rimGrad.addColorStop(0.25, t.b);
+    rimGrad.addColorStop(0.55, t.c);
+    rimGrad.addColorStop(1, t.rim);
     ctx.fillStyle = rimGrad;
     ctx.fillRect(-PIPE_W / 2 - 5, 0, PIPE_W + 10, rimH);
     ctx.strokeStyle = "rgba(0,0,0,0.25)";
