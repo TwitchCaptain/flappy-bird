@@ -35,6 +35,7 @@
   const BIRD_R    = 15;
   const SKY_EVERY  = 5;   // background palette shifts every N pipes scored
   const PIPE_EVERY = 9;   // pipe palette shifts every N pipes spawned
+  const NIGHT_EVERY = 15; // day/night cycle flips every N pipes scored
 
   // Sky gradients cycle with score
   const SKY_THEMES = [
@@ -45,6 +46,12 @@
     { top: "#2ec4b6", mid: "#7ee0d6", bot: "#c8f5f0", sun: "#fff1b8", glow: "#ffe070" },
     { top: "#1d3557", mid: "#457b9d", bot: "#a8dadc", sun: "#f1faee", glow: "#e9c46a" },
   ];
+
+  // Night palette (moon + stars replace the sun + clouds)
+  const NIGHT_THEME = {
+    top: "#0a0f24", mid: "#182040", bot: "#283060",
+    moon: "#eef0f8", glow: "#b8c8f0",
+  };
 
   // Pipe body/rim gradients cycle with spawn count
   const PIPE_THEMES = [
@@ -65,6 +72,7 @@
   let score = 0;
   let frame = 0;
   let shake = 0;
+  let overAt = 0;   // timestamp of game over, used to delay restart
 
   // Safe storage (works even on file:// protocol)
   const storage = {
@@ -123,8 +131,20 @@
     });
   }
 
-  function drawCloud(c) {
+  // ---------- Stars (night) ----------
+  const stars = [];
+  for (let i = 0; i < 60; i++) {
+    stars.push({
+      x: rand(0, W),
+      y: rand(10, GROUND_Y - 40),
+      s: rand(0.6, 1.8),
+      tw: rand(0, Math.PI * 2),
+    });
+  }
+
+  function drawCloud(c, alpha) {
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.translate(c.x, c.y);
     ctx.scale(c.s, c.s);
     ctx.fillStyle = "rgba(255,255,255,0.85)";
@@ -138,19 +158,23 @@
   }
 
   // ---------- Themes ----------
-  function hexToRgb(hex) {
-    const n = parseInt(hex.slice(1), 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  function parseColor(c) {
+    if (c.startsWith("#")) {
+      const n = parseInt(c.slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
+    return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0];
   }
   function lerpColor(a, b, t) {
-    const ca = hexToRgb(a), cb = hexToRgb(b);
+    const ca = parseColor(a), cb = parseColor(b);
     const r = Math.round(ca[0] + (cb[0] - ca[0]) * t);
     const g = Math.round(ca[1] + (cb[1] - ca[1]) * t);
     const bl = Math.round(ca[2] + (cb[2] - ca[2]) * t);
     return `rgb(${r},${g},${bl})`;
   }
   // Interpolate smoothly between palette themes instead of hard-switching.
-  function skyColors() {
+  function dayThemeColors() {
     const progress = score / SKY_EVERY;
     const idx = Math.floor(progress) % SKY_THEMES.length;
     const next = (idx + 1) % SKY_THEMES.length;
@@ -162,6 +186,27 @@
       bot: lerpColor(cur.bot, nxt.bot, t),
       sun: lerpColor(cur.sun, nxt.sun, t),
       glow: lerpColor(cur.glow, nxt.glow, t),
+    };
+  }
+  // 0 = full day, 1 = full night. Smoothly ramps at each day/night boundary.
+  function nightFactor() {
+    const cycle = score % (NIGHT_EVERY * 2);
+    const W = 3;
+    if (cycle < NIGHT_EVERY) {
+      if (cycle >= NIGHT_EVERY - W) return (cycle - (NIGHT_EVERY - W)) / W;
+      return 0;
+    }
+    if (cycle >= NIGHT_EVERY * 2 - W) return (NIGHT_EVERY * 2 - cycle) / W;
+    return 1;
+  }
+  // Sky gradient blends from the day palette toward the night palette.
+  function skyColors() {
+    const day = dayThemeColors();
+    const night = nightFactor();
+    return {
+      top: lerpColor(day.top, NIGHT_THEME.top, night),
+      mid: lerpColor(day.mid, NIGHT_THEME.mid, night),
+      bot: lerpColor(day.bot, NIGHT_THEME.bot, night),
     };
   }
   function pipeThemeForIndex(spawnIndex) {
@@ -180,8 +225,10 @@
   // ---------- Bird ----------
   function flap() {
     // Space bar starts the game from the title screen AND presses "Play again"
-    // after a game over.
-    if (mode === MODE.READY || mode === MODE.OVER) startGame();
+    // after a game over. After dying, ignore input for 1.5s so the score
+    // screen isn't skipped while the player is still jamming on space.
+    if (mode === MODE.READY) startGame();
+    else if (mode === MODE.OVER && Date.now() - overAt >= 1500) startGame();
     if (mode !== MODE.PLAYING) return;
     bird.vel = FLAP_VEL;
     sfx.flap();
@@ -201,6 +248,7 @@
 
   function gameOver() {
     mode = MODE.OVER;
+    overAt = Date.now();
     sfx.hit();
     shake = 10;
     if (score > best) {
@@ -268,24 +316,63 @@
   // ---------- Draw ----------
   function drawSky() {
     const sky = skyColors();
+    const night = nightFactor();
     const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
     g.addColorStop(0, sky.top);
     g.addColorStop(0.7, sky.mid);
     g.addColorStop(1, sky.bot);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, GROUND_Y);
-    // sun
+
+    const day = dayThemeColors();
+    // sun sets at night
+    if (night < 1) {
+      ctx.save();
+      ctx.globalAlpha = 0.9 * (1 - night);
+      ctx.fillStyle = day.sun;
+      ctx.beginPath();
+      ctx.arc(345, 78, 34, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.35 * (1 - night);
+      ctx.fillStyle = day.glow;
+      ctx.beginPath();
+      ctx.arc(345, 78, 50, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // moon rises at night
+    if (night > 0) {
+      ctx.save();
+      ctx.globalAlpha = night;
+      ctx.fillStyle = NIGHT_THEME.moon;
+      ctx.beginPath();
+      ctx.arc(345, 78, 26, 0, Math.PI * 2);
+      ctx.fill();
+      // carve a crescent with a sky-colored disc
+      ctx.fillStyle = "#0a0f24";
+      ctx.beginPath();
+      ctx.arc(353, 72, 21, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = night * 0.35;
+      ctx.fillStyle = NIGHT_THEME.glow;
+      ctx.beginPath();
+      ctx.arc(345, 78, 42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawStars(alpha) {
+    if (alpha <= 0) return;
     ctx.save();
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = sky.sun;
-    ctx.beginPath();
-    ctx.arc(345, 78, 34, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = sky.glow;
-    ctx.beginPath();
-    ctx.arc(345, 78, 50, 0, Math.PI * 2);
-    ctx.fill();
+    for (const s of stars) {
+      const tw = 0.55 + 0.45 * Math.sin(frame * 0.06 + s.tw);
+      ctx.globalAlpha = alpha * tw;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.s, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -433,7 +520,9 @@
       ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
     }
     drawSky();
-    for (const c of clouds) drawCloud(c);
+    const night = nightFactor();
+    for (const c of clouds) drawCloud(c, 1 - night);
+    drawStars(night);
     drawPipes();
     drawGround();
     drawBird();
