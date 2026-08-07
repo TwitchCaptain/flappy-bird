@@ -13,11 +13,33 @@
     <div class="score-box"><span class="label">SCORE</span><span id="score">0</span></div>
     <div class="score-box"><span class="label">BEST</span><span id="best">0</span></div>
   </div>
+  <div id="mode-label" class="mode-badge">Normal</div>
   <div id="overlay">
     <div id="title-card">
       <h1>Flappy Bird</h1>
       <p id="subtitle">Tap, click, or press Space to fly</p>
-      <button id="start-btn">▶ Play</button>
+      <div class="btn-row">
+        <button id="start-btn">▶ Play</button>
+        <button id="settings-btn">⚙ Settings</button>
+      </div>
+    </div>
+  </div>
+  <div id="settings-panel" class="hidden">
+    <div class="settings-card">
+      <h2>Settings</h2>
+      <div class="settings-section">
+        <span class="settings-label">Mode</span>
+        <div class="mode-row" id="mode-row">
+          <button class="mode-btn" data-mode="easy">Easy</button>
+          <button class="mode-btn" data-mode="normal">Normal</button>
+          <button class="mode-btn" data-mode="turbo">Turbo</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <span class="settings-label">Bird Color</span>
+        <div class="color-row" id="color-row"></div>
+      </div>
+      <button id="settings-close">Done</button>
     </div>
   </div>
 </div>

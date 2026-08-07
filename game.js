@@ -23,19 +23,56 @@
   const startBtn = document.getElementById("start-btn");
 
   // ---------- Constants ----------
-  const GRAVITY   = 0.42;
-  const FLAP_VEL  = -7.2;
-  const MAX_FALL  = 9.5;
+  let GRAVITY   = 0.42;
+  let FLAP_VEL  = -7.2;
+  let MAX_FALL  = 9.5;
   const PIPE_W    = 62;
-  const PIPE_GAP  = 168;
-  const PIPE_SPEED= 2.6;
-  const PIPE_SPAC = 205;      // horizontal spacing between pipes
+  let PIPE_GAP  = 168;
+  let PIPE_SPEED= 2.6;
+  let PIPE_SPAC = 205;      // horizontal spacing between pipes
   const BIRD_X    = 110;
   const GROUND_Y  = H - 84;
-  const BIRD_R    = 15;
+  let BIRD_R    = 15;
   const SKY_EVERY  = 5;   // background palette shifts every N pipes scored
   const PIPE_EVERY = 9;   // pipe palette shifts every N pipes spawned
   const NIGHT_EVERY = 15; // day/night cycle flips every N pipes scored
+
+  // Difficulty modes (Easy / Normal / Turbo)
+  const MODE_CFG = {
+    easy: {
+      label: "Easy",
+      birdR: 19, gravity: 0.34, flapVel: -6.4, maxFall: 8.2,
+      pipeSpeed: 1.9, pipeGap: 192, pipeSpac: 260,
+    },
+    normal: {
+      label: "Normal",
+      birdR: 15, gravity: 0.42, flapVel: -7.2, maxFall: 9.5,
+      pipeSpeed: 2.6, pipeGap: 168, pipeSpac: 205,
+    },
+    turbo: {
+      label: "Turbo",
+      birdR: 13, gravity: 0.52, flapVel: -8.2, maxFall: 11,
+      pipeSpeed: 3.4, pipeGap: 150, pipeSpac: 172,
+    },
+  };
+
+  // Bird color choices (base hex; full palette is derived from each)
+  const BIRD_COLORS = [
+    { name: "Classic Yellow", hex: "#f6b73c" },
+    { name: "Sunny Gold",     hex: "#f5c542" },
+    { name: "Crimson",        hex: "#e23b3b" },
+    { name: "Rose",           hex: "#e86a9a" },
+    { name: "Orange",         hex: "#f07a2e" },
+    { name: "Emerald",        hex: "#2ecc71" },
+    { name: "Teal",           hex: "#2aa8a0" },
+    { name: "Sky Blue",       hex: "#4a90d9" },
+    { name: "Royal Purple",   hex: "#8e44ad" },
+    { name: "Hot Pink",       hex: "#ff5ea0" },
+    { name: "Chocolate",      hex: "#8a5a2b" },
+    { name: "Charcoal",       hex: "#4a4a4a" },
+    { name: "Snow",           hex: "#e8e8f0" },
+    { name: "Mint",           hex: "#7fd8a8" },
+  ];
 
   // Sky gradients cycle with score
   const SKY_THEMES = [
@@ -85,6 +122,39 @@
   };
   let best = Number(storage.get("flap2_best") || 0);
   bestEl.textContent = best;
+
+  // ---------- Settings ----------
+  let gameMode = storage.get("flap2_mode") || "normal";
+  if (!MODE_CFG[gameMode]) gameMode = "normal";
+  let birdColorIdx = Number(storage.get("flap2_color") || 0);
+  if (!BIRD_COLORS[birdColorIdx]) birdColorIdx = 0;
+
+  function applyMode() {
+    const m = MODE_CFG[gameMode];
+    GRAVITY = m.gravity;
+    FLAP_VEL = m.flapVel;
+    MAX_FALL = m.maxFall;
+    PIPE_GAP = m.pipeGap;
+    PIPE_SPEED = m.pipeSpeed;
+    PIPE_SPAC = m.pipeSpac;
+    BIRD_R = m.birdR;
+  }
+  applyMode();
+
+  function birdPalette() {
+    const hex = BIRD_COLORS[birdColorIdx].hex;
+    return {
+      light: lighten(hex, 0.35),
+      mid: hex,
+      dark: darken(hex, 0.35),
+      belly: lighten(hex, 0.55),
+      wingLight: lighten(hex, 0.45),
+      wingDark: darken(hex, 0.25),
+      beak: "#f26b21",
+      beakDark: "#c24e12",
+      stroke: darken(hex, 0.5),
+    };
+  }
 
   // ---------- Procedural audio (Web Audio, no files) ----------
   let audioCtx = null;
@@ -166,6 +236,14 @@
     const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
     return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0];
   }
+  function lighten(hex, pct) {
+    const c = parseColor(hex);
+    return `rgb(${Math.round(c[0] + (255 - c[0]) * pct)},${Math.round(c[1] + (255 - c[1]) * pct)},${Math.round(c[2] + (255 - c[2]) * pct)})`;
+  }
+  function darken(hex, pct) {
+    const c = parseColor(hex);
+    return `rgb(${Math.round(c[0] * (1 - pct))},${Math.round(c[1] * (1 - pct))},${Math.round(c[2] * (1 - pct))})`;
+  }
   function lerpColor(a, b, t) {
     const ca = parseColor(a), cb = parseColor(b);
     const r = Math.round(ca[0] + (cb[0] - ca[0]) * t);
@@ -224,6 +302,8 @@
 
   // ---------- Bird ----------
   function flap() {
+    // Ignore input while the settings menu is open.
+    if (settingsPanel && !settingsPanel.classList.contains("hidden")) return;
     // Space bar starts the game from the title screen AND presses "Play again"
     // after a game over. After dying, ignore input for 1.5s so the score
     // screen isn't skipped while the player is still jamming on space.
@@ -261,8 +341,12 @@
       <h1>Game Over</h1>
       <p>Nice try!</p>
       <p class="final-score">Score: ${score} · Best: ${best}</p>
-      <button id="start-btn">↻ Play again</button>`;
+      <div class="btn-row">
+        <button id="start-btn">↻ Play again</button>
+        <button id="settings-btn">⚙ Settings</button>
+      </div>`;
     document.getElementById("start-btn").addEventListener("click", startGame);
+    bindSettingsBtn();
   }
 
   // ---------- Update ----------
@@ -443,31 +527,34 @@
   }
 
   function drawBird() {
+    const pal = birdPalette();
     ctx.save();
     ctx.translate(BIRD_X, bird.y);
     ctx.rotate((bird.rot * Math.PI) / 180);
+    const k = BIRD_R / 15;
+    ctx.scale(k, k);
     // shadow
     ctx.save();
     ctx.translate(2, 4);
     ctx.fillStyle = "rgba(0,0,0,0.15)";
     ctx.beginPath();
-    ctx.ellipse(0, 2, BIRD_R + 2, BIRD_R - 1, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 2, 17, 14, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     // body
-    const g = ctx.createRadialGradient(-4, -6, 4, 0, 0, BIRD_R + 4);
-    g.addColorStop(0, "#ffe066");
-    g.addColorStop(0.55, "#ffcc33");
-    g.addColorStop(1, "#e8a020");
+    const g = ctx.createRadialGradient(-4, -6, 4, 0, 0, 19);
+    g.addColorStop(0, pal.light);
+    g.addColorStop(0.55, pal.mid);
+    g.addColorStop(1, pal.dark);
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.ellipse(0, 0, BIRD_R + 2, BIRD_R - 1, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 17, 14, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(140,90,10,0.5)";
+    ctx.strokeStyle = pal.stroke;
     ctx.lineWidth = 1.5;
     ctx.stroke();
     // belly
-    ctx.fillStyle = "#fff3cc";
+    ctx.fillStyle = pal.belly;
     ctx.beginPath();
     ctx.ellipse(2, 5, 9, 7, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -477,13 +564,13 @@
     ctx.translate(-3, -wingY * 0.5);
     ctx.rotate(-0.5 + Math.sin(frame * 0.3) * 0.5);
     const wg = ctx.createLinearGradient(0, -6, 0, 8);
-    wg.addColorStop(0, "#ffe9a8");
-    wg.addColorStop(1, "#f0b840");
+    wg.addColorStop(0, pal.wingLight);
+    wg.addColorStop(1, pal.wingDark);
     ctx.fillStyle = wg;
     ctx.beginPath();
     ctx.ellipse(-7, 0, 9, 6, -0.3, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(140,90,10,0.4)";
+    ctx.strokeStyle = pal.stroke;
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.restore();
@@ -501,15 +588,118 @@
     ctx.arc(10.2, -6.2, 1.1, 0, Math.PI * 2);
     ctx.fill();
     // beak
-    ctx.fillStyle = "#f26b21";
+    ctx.fillStyle = pal.beak;
     ctx.beginPath();
     ctx.moveTo(12, 2);
     ctx.lineTo(24, 4);
     ctx.lineTo(12, 8);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "#c24e12";
+    ctx.strokeStyle = pal.beakDark;
     ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawEagle() {
+    const pal = birdPalette();
+    ctx.save();
+    ctx.translate(BIRD_X, bird.y);
+    ctx.rotate((bird.rot * Math.PI) / 180);
+    const k = BIRD_R / 13;
+    ctx.scale(k, k);
+    // shadow
+    ctx.save();
+    ctx.translate(2, 4);
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 16, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // tail feathers
+    ctx.save();
+    ctx.translate(-13, 1);
+    ctx.rotate(0.35);
+    ctx.fillStyle = pal.dark;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-7, 5);
+    ctx.lineTo(-4, 0);
+    ctx.lineTo(-8, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // wing (swept, flaps)
+    const wingY = Math.sin(frame * 0.3) * 6;
+    ctx.save();
+    ctx.translate(-3, -3 - wingY * 0.5);
+    ctx.rotate(-0.55 + Math.sin(frame * 0.3) * 0.4);
+    const wg = ctx.createLinearGradient(0, -8, 0, 4);
+    wg.addColorStop(0, pal.wingLight);
+    wg.addColorStop(1, pal.wingDark);
+    ctx.fillStyle = wg;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-11, -7, -15, -13);
+    ctx.quadraticCurveTo(-7, -9, 0, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = pal.stroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+    // body (angular)
+    const bg = ctx.createLinearGradient(0, -8, 0, 8);
+    bg.addColorStop(0, pal.light);
+    bg.addColorStop(0.6, pal.mid);
+    bg.addColorStop(1, pal.dark);
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.moveTo(-12, 2);
+    ctx.quadraticCurveTo(-5, -5, 3, -6);
+    ctx.quadraticCurveTo(9, -4, 12, -1);
+    ctx.quadraticCurveTo(13, 3, 9, 6);
+    ctx.quadraticCurveTo(3, 8, -5, 6);
+    ctx.quadraticCurveTo(-11, 4, -12, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = pal.stroke;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    // white head
+    ctx.fillStyle = "#f2f2f2";
+    ctx.beginPath();
+    ctx.arc(11, -2, 5.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = pal.stroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // hooked beak (yellow)
+    ctx.fillStyle = "#f6c23c";
+    ctx.beginPath();
+    ctx.moveTo(14, -1);
+    ctx.quadraticCurveTo(19, -2, 20, 1);
+    ctx.quadraticCurveTo(17, 3, 14, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#c98a1e";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // fierce eye
+    ctx.fillStyle = "#1d1d1d";
+    ctx.beginPath();
+    ctx.arc(11.5, -3, 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(12, -3.4, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    // angry brow
+    ctx.strokeStyle = "#1d1d1d";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(9.5, -5.5);
+    ctx.lineTo(13, -4.2);
     ctx.stroke();
     ctx.restore();
   }
@@ -525,7 +715,7 @@
     drawStars(night);
     drawPipes();
     drawGround();
-    drawBird();
+    if (gameMode === "turbo") drawEagle(); else drawBird();
     ctx.restore();
   }
 
@@ -548,6 +738,70 @@
     if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") onInput(e);
   });
   startBtn.addEventListener("click", (e) => { e.stopPropagation(); ensureAudio(); startGame(); });
+
+  // ---------- Settings menu ----------
+  const settingsPanel = document.getElementById("settings-panel");
+  const colorRow = document.getElementById("color-row");
+
+  function updateModeLabel() {
+    const lbl = document.getElementById("mode-label");
+    if (lbl) lbl.textContent = MODE_CFG[gameMode].label;
+  }
+
+  function renderSettings() {
+    document.querySelectorAll(".mode-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.mode === gameMode);
+    });
+    colorRow.innerHTML = "";
+    BIRD_COLORS.forEach((c, i) => {
+      const sw = document.createElement("button");
+      sw.className = "color-swatch";
+      sw.style.background = c.hex;
+      sw.title = c.name;
+      sw.dataset.idx = i;
+      sw.classList.toggle("active", i === birdColorIdx);
+      sw.addEventListener("click", () => selectColor(i));
+      colorRow.appendChild(sw);
+    });
+  }
+
+  function selectMode(m) {
+    gameMode = m;
+    storage.set("flap2_mode", m);
+    applyMode();
+    updateModeLabel();
+    renderSettings();
+  }
+
+  function selectColor(i) {
+    birdColorIdx = i;
+    storage.set("flap2_color", String(i));
+    renderSettings();
+  }
+
+  function openSettings() {
+    settingsPanel.classList.remove("hidden");
+    renderSettings();
+  }
+
+  function closeSettings() {
+    settingsPanel.classList.add("hidden");
+  }
+
+  function bindSettingsBtn() {
+    const btn = document.getElementById("settings-btn");
+    if (btn) btn.addEventListener("click", (e) => { e.stopPropagation(); openSettings(); });
+  }
+
+  document.querySelectorAll(".mode-btn").forEach(b => {
+    b.addEventListener("click", () => selectMode(b.dataset.mode));
+  });
+  document.getElementById("settings-close").addEventListener("click", closeSettings);
+  settingsPanel.addEventListener("click", (e) => {
+    if (e.target === settingsPanel) closeSettings();
+  });
+  bindSettingsBtn();
+  updateModeLabel();
 
   // ---------- Boot ----------
   loop();
