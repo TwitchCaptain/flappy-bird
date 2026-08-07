@@ -52,7 +52,7 @@
     turbo: {
       label: "Turbo",
       birdR: 13, gravity: 0.52, flapVel: -8.2, maxFall: 11,
-      pipeSpeed: 3.4, pipeGap: 150, pipeSpac: 172,
+      pipeSpeed: 3.4, pipeGap: 150, pipeSpac: 185,
     },
   };
 
@@ -120,14 +120,16 @@
       try { localStorage.setItem(key, val); } catch (e) { /* ignore */ }
     },
   };
-  let best = Number(storage.get("flap2_best") || 0);
-  bestEl.textContent = best;
-
   // ---------- Settings ----------
   let gameMode = storage.get("flap2_mode") || "normal";
   if (!MODE_CFG[gameMode]) gameMode = "normal";
   let birdColorIdx = Number(storage.get("flap2_color") || 0);
   if (!BIRD_COLORS[birdColorIdx]) birdColorIdx = 0;
+
+  // Best scores are tracked separately per mode.
+  function bestKey() { return "flap2_best_" + gameMode; }
+  let best = Number(storage.get(bestKey()) || 0);
+  bestEl.textContent = best;
 
   function applyMode() {
     const m = MODE_CFG[gameMode];
@@ -333,7 +335,7 @@
     shake = 10;
     if (score > best) {
       best = score;
-      storage.set("flap2_best", String(best));
+      storage.set(bestKey(), String(best));
       bestEl.textContent = best;
     }
     overlay.classList.remove("hidden");
@@ -769,6 +771,8 @@
     gameMode = m;
     storage.set("flap2_mode", m);
     applyMode();
+    best = Number(storage.get(bestKey()) || 0);
+    bestEl.textContent = best;
     updateModeLabel();
     renderSettings();
   }
