@@ -138,10 +138,32 @@
   }
 
   // ---------- Themes ----------
-  function skyTheme() {
-    return SKY_THEMES[Math.floor(score / SKY_EVERY) % SKY_THEMES.length];
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
-
+  function lerpColor(a, b, t) {
+    const ca = hexToRgb(a), cb = hexToRgb(b);
+    const r = Math.round(ca[0] + (cb[0] - ca[0]) * t);
+    const g = Math.round(ca[1] + (cb[1] - ca[1]) * t);
+    const bl = Math.round(ca[2] + (cb[2] - ca[2]) * t);
+    return `rgb(${r},${g},${bl})`;
+  }
+  // Interpolate smoothly between palette themes instead of hard-switching.
+  function skyColors() {
+    const progress = score / SKY_EVERY;
+    const idx = Math.floor(progress) % SKY_THEMES.length;
+    const next = (idx + 1) % SKY_THEMES.length;
+    const t = progress - Math.floor(progress);
+    const cur = SKY_THEMES[idx], nxt = SKY_THEMES[next];
+    return {
+      top: lerpColor(cur.top, nxt.top, t),
+      mid: lerpColor(cur.mid, nxt.mid, t),
+      bot: lerpColor(cur.bot, nxt.bot, t),
+      sun: lerpColor(cur.sun, nxt.sun, t),
+      glow: lerpColor(cur.glow, nxt.glow, t),
+    };
+  }
   function pipeThemeForIndex(spawnIndex) {
     return PIPE_THEMES[Math.floor(spawnIndex / PIPE_EVERY) % PIPE_THEMES.length];
   }
@@ -157,7 +179,9 @@
 
   // ---------- Bird ----------
   function flap() {
-    if (mode === MODE.READY) startGame();
+    // Space bar starts the game from the title screen AND presses "Play again"
+    // after a game over.
+    if (mode === MODE.READY || mode === MODE.OVER) startGame();
     if (mode !== MODE.PLAYING) return;
     bird.vel = FLAP_VEL;
     sfx.flap();
@@ -243,7 +267,7 @@
 
   // ---------- Draw ----------
   function drawSky() {
-    const sky = skyTheme();
+    const sky = skyColors();
     const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
     g.addColorStop(0, sky.top);
     g.addColorStop(0.7, sky.mid);
